@@ -1,0 +1,132 @@
+##=================================================================================
+## Practical Machine Learning Programming Assignment
+##=================================================================================
+
+### Synopsis
+
+In this report, we build a machine learning model, by constructing a classification 
+tree from the training dataset and then using the tree to predict the outcome for 
+the testing dataset. We also report the estimated out-of-sample error upon doing 
+10-fold cross-validation and finally observe that the model is able to classify 
+the testing data with a misclassification error that is close to the estimated error.
+
+### Data Processing
+
+First we load the data.
+
+```{r loadData, echo=TRUE}
+trainURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(trainURL,destfile="pml-training.csv")
+testURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(testURL,destfile="pml-testing.csv")
+training <- read.csv("pml-training.csv",na.strings="")
+testing <- read.csv("pml-testing.csv",na.strings="")
+```
+
+We examine the outcome variable, which is a factor.
+
+```{r outcome, echo = TRUE}
+# Outcome variable
+levels(training$classe)
+```
+
+Thus, the outcome variable has 5 possible values: A, B, C, D, and E.
+
+We further explore the number of observations and complete cases in the 
+training dataset.
+
+```{r explore, echo = TRUE}
+# Number of observations
+nrow(training)
+
+# No. of complete cases
+sum(complete.cases(training))
+```
+
+So, clearly there are missing values in the dataset. Missing values are to be imputed for.  
+Also, features with zero variance are removed from our list of features.
+
+```{r preProcess, echo = TRUE}
+# Extract the relevant features in numeric formats
+train <- training[,-c(1:7,160)]
+train1 <- data.matrix(train)
+train2 <- data.frame(train1)
+
+# Load the caret package
+library(caret)
+
+# Impute the missing values and standardize
+set.seed(13343)
+preObj <- preProcess(train2,method="knnImpute")
+train3 <- predict(preObj,train2)
+
+# Identify and remove the features with zero or near zero variance
+nzv <- nearZeroVar(train3,saveMetrics=TRUE)
+features <- row.names(nzv[!(nzv$zeroVar),])
+train4 <- train3[,features]
+
+# Perform the same preprocessings to the testing dataset
+test <- testing[,-c(1:7,160)]
+test1 <- data.matrix(test)
+test2 <- data.frame(test1)
+test3 <- predict(preObj,test2)
+test4 <- test3[,features]
+```
+
+### Model Building and Estimated Error
+
+We build a decision tree for classification of the training dataset using 
+the rpart library in R. Note that this inherently involves a 10-fold 
+cross-validation.
+
+```{r predModel, echo = TRUE}
+# Train the training set to fit a classification tree
+library(rpart)
+fit <- rpart(training$classe~.,data=train4)
+printcp(fit)
+```
+
+Thus, the estimated 10-fold cross-validated out-of-sample error is given by:
+
+```{r OOS, echo = TRUE}
+# Root node error * rel error for the deepest level, i.e. 14
+OOSError <- 0.71563 * 0.34148
+OOSError
+```
+
+Thus the estimated error is 24.43%. Let us now plot the model decision tree:
+
+```{r plotTree, echo = TRUE}
+library(rattle)
+fancyRpartPlot(fit)
+```
+
+### Prediction of Test Data
+
+Now, we use the model built above to predict the 20 test cases in the test 
+dataset.
+
+```{r predictTest, echo = TRUE}
+# Predict the outcomes for the testing set
+pred <- predict(fit,test4,type="class")
+pred
+```
+
+These answers were submitted to the course webpage to determine which cases 
+were predicted by our model correctly. We use the following code to create 
+the appropriate output text files for the submission.
+
+```{r submit, echo = TRUE}
+answers <- as.character(pred)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+
+We found that 14 out of 20 test cases were classified correctly. This tallies 
+well with our out-of-sample error estimated from our model before.
